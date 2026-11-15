@@ -32,7 +32,7 @@ Data flows through the run context and is templated into any node field with `{{
 | Data | Supabase Postgres (`snake_case` tables: `profiles`, `flows`, `flow_runs`, `flow_run_logs`) | Prisma + SQLite (`db/custom.db`) |
 | Auth | Supabase Auth (JWT via `@supabase/ssr` cookies) | Signed httpOnly cookie sessions (HMAC) |
 | Access control | RLS policies on every table; **service-role key used only server-side** for webhooks, cron, and maintenance | Server-side userId scoping |
-| Scheduler | Vercel Cron → `/api/cron/tick` every minute | Built-in in-process scheduler |
+| Scheduler | External pinger (cron-job.org) or Vercel Cron (Pro) → `/api/cron/tick` every minute | Built-in in-process scheduler |
 
 The mode is selected automatically: if `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are all set, the app runs in cloud mode; otherwise it falls back to local demo mode. See `src/lib/env.ts`.
 
@@ -64,10 +64,34 @@ The mode is selected automatically: if `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_
 
 ## Scheduled flows
 
-In production the scheduler is **Vercel Cron** hitting `GET /api/cron/tick` every minute — [`vercel.json`](vercel.json) is already included. Vercel automatically sends `Authorization: Bearer $CRON_SECRET` on cron invocations, which the endpoint verifies (it also accepts `?secret=...` for external schedulers).
+The entire scheduler is a single endpoint: `GET /api/cron/tick`. Each tick runs all due scheduled flows (minute or daily granularity), sweeps stale runs, and enforces run-log retention. It is protected by `CRON_SECRET` and accepts either `Authorization: Bearer <secret>` (how Vercel Cron calls it) or `?secret=<secret>` (handy for external pingers and quick browser tests).
 
-> **Note:** Vercel **Hobby** plans limit cron jobs to **daily** granularity. For minute-level schedules on Hobby, either upgrade to **Pro** or use a free external pinger (e.g. [cron-job.org](https://cron-job.org)) calling
-> `https://YOUR_DOMAIN/api/cron/tick?secret=YOUR_CRON_SECRET` every minute.
+### On the Vercel Hobby plan (recommended setup)
+
+Vercel **Hobby** limits built-in cron jobs to once per day, so minute-level scheduling is done with a free external pinger — [cron-job.org](https://cron-job.org):
+
+1. Set `CRON_SECRET` (any long random string) in **Vercel → Settings → Environment Variables**, then **redeploy**.
+2. Sign up at [cron-job.org](https://console.cron-job.org) and open **Jobs → Create job**.
+3. Configure the job:
+   - **Title** — `WireItt scheduler tick`
+   - **URL** — `https://YOUR_DOMAIN.vercel.app/api/cron/tick`
+   - **Schedule** — *Custom* → every minute (`* * * * *`)
+   - **Advanced → Enable custom headers** — add header `Authorization` = `Bearer YOUR_CRON_SECRET`
+     (alternative: just append `?secret=YOUR_CRON_SECRET` to the URL and skip the header)
+   - **Notifications** — enable email alerts on failures
+4. **Create job**. Within a minute, the job history should show `HTTP 200` responses — that's your scheduler running.
+
+> Occasional *timeout* entries in the cron-job.org history are harmless: the free pinger cuts off after ~30s while Vercel keeps executing the tick up to its 60s limit. The work still completes server-side.
+
+### On the Vercel Pro plan
+
+Re-add the built-in cron to [`vercel.json`](vercel.json) and Vercel calls the endpoint automatically with the correct `Authorization` header:
+
+```json
+{ "crons": [{ "path": "/api/cron/tick", "schedule": "* * * * *" }] }
+```
+
+Remove the cron-job.org job afterwards to avoid double ticking (harmless, but wasteful).
 
 ## Run locally
 
