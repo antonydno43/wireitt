@@ -1,0 +1,85 @@
+// WireItt — local demo mode schema (SQLite).
+// Production uses Supabase PostgreSQL — see supabase/migrations/0001_init.sql
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  flows        Flow[]
+  runs         FlowRun[]
+}
+
+model Flow {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String    @default("Untitled flow")
+  description     String?
+  status          String    @default("paused") // active | paused
+  graph           String    @default("{\"nodes\":[],\"edges\":[]}") // JSON: { nodes, edges }
+  triggerType     String? // trigger.manual | trigger.webhook | trigger.schedule
+  webhookToken    String?   @unique
+  scheduleType    String? // minutes | daily
+  scheduleInterval Int?
+  scheduleTime    String?
+  nextRunAt       DateTime?
+  runCount        Int       @default(0)
+  lastRunAt       DateTime?
+  lastRunStatus   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  runs            FlowRun[]
+
+  @@index([userId, updatedAt])
+  @@index([nextRunAt])
+}
+
+model FlowRun {
+  id          String        @id @default(cuid())
+  flowId      String
+  flow        Flow          @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      String        @default("running") // running | success | error
+  triggerType String // manual | webhook | schedule | test
+  input       String?
+  output      String?
+  error       String?
+  steps       String?
+  startedAt   DateTime      @default(now())
+  finishedAt  DateTime?
+  durationMs  Int?
+  logs        FlowRunLog[]
+
+  @@index([userId, startedAt])
+  @@index([flowId, startedAt])
+}
+
+model FlowRunLog {
+  id        String   @id @default(cuid())
+  runId     String
+  run       FlowRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  flowId    String
+  userId    String
+  nodeId    String
+  nodeType  String
+  level     String   @default("info") // info | success | error
+  message   String
+  data      String?
+  createdAt DateTime @default(now())
+
+  @@index([runId])
+  @@index([userId, createdAt])
+}
