@@ -46,24 +46,27 @@ server.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-local-*
-test
-prompt
+
+# local scratch files/folders at repo ROOT only (anchored so they can
+# never match source files like src/server/store/local-store.ts)
+/local-*
+/test
+/prompt
 
 # local SQLite database (local demo mode)
 db/
 *.db
 
-# agent workspace / non-deployable folders
-examples/
-skills/
-download/
-upload/
-mini-services/
-.zscripts/
-agent-ctx/
-.claude
-.z-ai-config
+# agent workspace / non-deployable folders (repo ROOT only)
+/examples/
+/skills/
+/download/
+/upload/
+/mini-services/
+/.zscripts/
+/agent-ctx/
+/.claude
+/.z-ai-config
 
 # sandbox tooling (not part of the app)
 /tool-results/
